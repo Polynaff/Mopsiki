@@ -1,71 +1,37 @@
-def parse_request(request: dict):
-    user_id = request.get("user_id")
-    items = request.get("items")
-    coupon = request.get("coupon")
-    currency = request.get("currency")
-    return user_id, items, coupon, currency
+DISCOUNT_COUPON = "DISCOUNT10"
+DISCOUNT_RATE = 0.9
 
 
-def process_checkout(request: dict) -> dict:
-    user_id, items, coupon, currency = parse_request(request)
+def parse_request(request: dict) -> dict:
+    user_id = _get_required(request, "user_id")
+    items = _get_required(request, "items")
 
-    if user_id is None:
-        raise ValueError("user_id is required")
-    if items is None:
-        raise ValueError("items is required")
-    if currency is None:
-        currency = "USD"
+    total = _calculate_total(items)
+    total = _apply_discount(total, request.get("coupon"))
 
-    if type(items) is not list:
-        raise ValueError("items must be a list")
-    if len(items) == 0:
-        raise ValueError("items must not be empty")
+    return {"user_id": user_id, "total": total}
 
-    for it in items:
-        if "price" not in it or "qty" not in it:
-            raise ValueError("item must have price and qty")
-        if it["price"] <= 0:
-            raise ValueError("price must be positive")
-        if it["qty"] <= 0:
-            raise ValueError("qty must be positive")
 
-    subtotal = 0
-    for it in items:
-        subtotal = subtotal + it["price"] * it["qty"]
+def _get_required(data: dict, key: str):
+    value = data.get(key)
+    if not value:
+        raise ValueError(f"{key} required")
+    return value
 
-    discount = 0
-    if coupon is None or coupon == "":
-        discount = 0
-    elif coupon == "SAVE10":
-        discount = int(subtotal * 0.10)
-    elif coupon == "SAVE20":
-        if subtotal >= 200:
-            discount = int(subtotal * 0.20)
-        else:
-            discount = int(subtotal * 0.05)
-    elif coupon == "VIP":
-        discount = 50
-        if subtotal < 100:
-            discount = 10
-    else:
-        raise ValueError("unknown coupon")
 
-    total_after_discount = subtotal - discount
-    if total_after_discount < 0:
-        total_after_discount = 0
+def _calculate_total(items: list) -> float:
+    return sum(
+        _item_cost(item) for item in items
+    )
 
-    tax = int(total_after_discount * 0.21)
-    total = total_after_discount + tax
 
-    order_id = str(user_id) + "-" + str(len(items)) + "-" + "X"
+def _item_cost(item: dict) -> float:
+    price = item.get("price", 0)
+    qty = item.get("qty", 1)
+    return price * qty
 
-    return {
-        "order_id": order_id,
-        "user_id": user_id,
-        "currency": currency,
-        "subtotal": subtotal,
-        "discount": discount,
-        "tax": tax,
-        "total": total,
-        "items_count": len(items),
-    }
+
+def _apply_discount(total: float, coupon: str | None) -> float:
+    if coupon == DISCOUNT_COUPON:
+        return total * DISCOUNT_RATE
+    return total
